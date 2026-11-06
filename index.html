@@ -507,17 +507,20 @@ function setupConnection(conn) {
         // Only host controls the actual game state.
         if (player === "X") {
 
-            if (data.type === "move") {
+           if (data.type === "move") {
 
-                if (
-                    data.index >= 0 &&
-                    data.index < 9 &&
-                    Number.isInteger(data.index)
-                ) {
-                    makeMove(data.index, "O");
-                }
+    if (
+        Number.isInteger(data.index) &&
+        data.index >= 0 &&
+        data.index < 9 &&
+        !gameOver &&
+        turn === "O" &&
+        board[data.index] === ""
+    ) {
+        makeMove(data.index, "O");
+    }
 
-            }
+}
 
             if (data.type === "rematch") {
 
