@@ -294,11 +294,11 @@ button:focus-visible {
 
 <script>
 
-// ==========================================
-// GAME VARIABLES
-// ==========================================
+// ============================================
+// TIC TAC TOE - MULTIPLAYER ENGINE
+// ============================================
 
-let peer;
+let peer = null;
 let connection = null;
 
 let player = null;
@@ -318,43 +318,37 @@ let scores = {
 
 let winningLine = [];
 
-let connectionReady = false;
-let peerReady = false;
 let connecting = false;
-let hostConnection = null;
+let connectionOpened = false;
 
 const cells = document.querySelectorAll(".cell");
 
 const statusBox = document.getElementById("status");
 const inviteBtn = document.getElementById("inviteBtn");
 const rematchBtn = document.getElementById("rematchBtn");
-
 const roomDisplay = document.getElementById("roomID");
 
 const winningCombinations = [
     [0, 1, 2],
     [3, 4, 5],
     [6, 7, 8],
-
     [0, 3, 6],
     [1, 4, 7],
     [2, 5, 8],
-
     [0, 4, 8],
     [2, 4, 6]
 ];
 
 
-// ==========================================
-// DETERMINE HOST OR GUEST
-// ==========================================
+// ============================================
+// INITIALIZE PLAYER
+// ============================================
 
-const params = new URLSearchParams(window.location.search);
+const params = new URLSearchParams(location.search);
 const requestedRoom = params.get("room");
 
 if (requestedRoom) {
 
-    // PLAYER 2
     player = "O";
     roomId = requestedRoom;
 
@@ -362,31 +356,29 @@ if (requestedRoom) {
 
     setStatus("Connecting to Player X...");
 
-    createPeer();
-
 } else {
 
-    // PLAYER 1
     player = "X";
 
-    setStatus("Creating your game room...");
-
-    createPeer();
+    setStatus("Creating game room...");
 
 }
 
 
-// ==========================================
-// PEERJS INITIALIZATION
-// ==========================================
+// ============================================
+// CREATE PEER
+// ============================================
 
 function createPeer() {
+
+    if (typeof Peer === "undefined") {
+        setStatus("PeerJS failed to load. Check internet.");
+        return;
+    }
 
     peer = new Peer();
 
     peer.on("open", function(id) {
-
-        peerReady = true;
 
         if (player === "X") {
 
@@ -396,9 +388,9 @@ function createPeer() {
 
             inviteBtn.disabled = false;
 
-            setStatus("Waiting for opponent...");
-
             updateInviteLink();
+
+            setStatus("Waiting for opponent...");
 
         } else {
 
@@ -409,7 +401,7 @@ function createPeer() {
     });
 
 
-    // HOST RECEIVES CONNECTION
+    // HOST RECEIVES PLAYER O
     peer.on("connection", function(conn) {
 
         if (player !== "X") {
@@ -417,12 +409,11 @@ function createPeer() {
             return;
         }
 
-        if (hostConnection && hostConnection.open) {
+        if (connection && connection.open) {
             conn.close();
             return;
         }
 
-        hostConnection = conn;
         connection = conn;
 
         setupConnection(conn);
@@ -430,22 +421,14 @@ function createPeer() {
     });
 
 
-    peer.on("error", function(err) {
+    peer.on("error", function(error) {
 
-        console.error("PeerJS error:", err);
+        console.error("PeerJS error:", error);
 
-        if (player === "O" && !connected) {
-            setStatus("Unable to connect. Refresh the invite link.");
+        if (error.type === "peer-unavailable") {
+            setStatus("Room not found. Ask for a new link.");
         } else {
-            setStatus("Connection error. Please refresh.");
-        }
-
-    });
-
-    peer.on("disconnected", function() {
-
-        if (connected) {
-            setStatus("Connection lost. Please refresh.");
+            setStatus("Connection error: " + error.type);
         }
 
     });
@@ -453,78 +436,94 @@ function createPeer() {
 }
 
 
-// ==========================================
-// PLAYER 2 CONNECTS TO PLAYER 1
-// ==========================================
+// ============================================
+// PLAYER O CONNECTS TO PLAYER X
+// ============================================
 
 function connectToHost() {
 
-    if (connecting || connected || !peerReady) return;
+    if (connecting || connected) return;
 
     connecting = true;
 
-    setStatus("Joining the game...");
+    setStatus("Joining room...");
 
-    const conn = peer.connect(roomId, {
+    connection = peer.connect(roomId, {
         reliable: true
     });
 
-    connection = conn;
-
-    setupConnection(conn);
+    setupConnection(connection);
 
 }
 
 
-// ==========================================
-// CONNECTION EVENTS
-// ==========================================
+// ============================================
+// SET UP DATA CONNECTION
+// ============================================
 
 function setupConnection(conn) {
 
-    conn.on("open", function() {
+    function connectionIsOpen() {
 
-    connected = true;
-    connectionReady = true;
+        if (connectionOpened) return;
 
-    connection = conn;
+        connectionOpened = true;
+        connected = true;
+        connecting = false;
 
-    if (player === "X") {
-        hostConnection = conn;
+        connection = conn;
+
+        setStatus("Opponent connected!", true);
+
+        updateGame();
+
+        // Host sends initial game state.
+        if (player === "X") {
+            sendState();
+        }
+
     }
 
-    setStatus("Opponent connected!", true);
 
-    updateGame();
+    conn.on("open", connectionIsOpen);
 
-    if (player === "X") {
-        sendState();
+    // Handle connections that have already opened.
+    if (conn.open) {
+        connectionIsOpen();
     }
 
-});
 
+    // RECEIVE DATA
     conn.on("data", function(data) {
 
         if (!data || typeof data !== "object") return;
 
-        // Only host controls the actual game state.
+        // PLAYER X IS THE GAME HOST
         if (player === "X") {
 
-           if (data.type === "move") {
+            // RECEIVE PLAYER O MOVE
+            if (data.type === "move") {
 
-    if (
-        Number.isInteger(data.index) &&
-        data.index >= 0 &&
-        data.index < 9 &&
-        !gameOver &&
-        turn === "O" &&
-        board[data.index] === ""
-    ) {
-        makeMove(data.index, "O");
-    }
+                const index = data.index;
 
-}
+                if (
+                    Number.isInteger(index) &&
+                    index >= 0 &&
+                    index < 9 &&
+                    connected &&
+                    !gameOver &&
+                    turn === "O" &&
+                    board[index] === ""
+                ) {
 
+                    makeMove(index, "O");
+
+                }
+
+            }
+
+
+            // RECEIVE REMATCH REQUEST
             if (data.type === "rematch") {
 
                 if (gameOver) {
@@ -533,9 +532,11 @@ function setupConnection(conn) {
 
             }
 
-        } else {
+        }
 
-            // Guest receives the host's official state.
+        // PLAYER O RECEIVES HOST GAME STATE
+        else {
+
             if (data.type === "state") {
 
                 receiveState(data.state);
@@ -550,10 +551,11 @@ function setupConnection(conn) {
     conn.on("close", function() {
 
         connected = false;
-        connectionReady = false;
+        connectionOpened = false;
+        connecting = false;
 
-        if (player === "X") {
-            hostConnection = null;
+        if (connection === conn) {
+            connection = null;
         }
 
         setStatus("Opponent disconnected.");
@@ -563,26 +565,26 @@ function setupConnection(conn) {
     });
 
 
-    conn.on("error", function(err) {
+    conn.on("error", function(error) {
 
-        console.error("Connection error:", err);
+        console.error("Data connection error:", error);
 
-        setStatus("Connection problem.");
+        setStatus("Data connection error.");
 
     });
 
 }
 
 
-// ==========================================
+// ============================================
 // INVITE LINK
-// ==========================================
+// ============================================
 
 function updateInviteLink() {
 
     const inviteLink =
-        window.location.origin +
-        window.location.pathname +
+        location.origin +
+        location.pathname +
         "?room=" +
         encodeURIComponent(roomId);
 
@@ -611,9 +613,56 @@ function updateInviteLink() {
 }
 
 
-// ==========================================
-// GAME MOVE
-// ==========================================
+// ============================================
+// CELL CLICK
+// ============================================
+
+cells.forEach(function(cell) {
+
+    cell.addEventListener("click", function() {
+
+        const index = Number(cell.dataset.index);
+
+        if (!connected || gameOver) return;
+
+        if (player !== turn) return;
+
+        if (board[index] !== "") return;
+
+
+        // PLAYER X MAKES MOVE
+        if (player === "X") {
+
+            makeMove(index, "X");
+
+        }
+
+        // PLAYER O REQUESTS MOVE FROM HOST
+        else {
+
+            if (connection && connection.open) {
+
+                connection.send({
+                    type: "move",
+                    index: index
+                });
+
+            } else {
+
+                setStatus("Connection lost. Please refresh.");
+
+            }
+
+        }
+
+    });
+
+});
+
+
+// ============================================
+// MAKE MOVE - HOST ONLY
+// ============================================
 
 function makeMove(index, symbol) {
 
@@ -631,56 +680,19 @@ function makeMove(index, symbol) {
 
     updateGame();
 
-    // Host broadcasts official game state.
+    // Broadcast every accepted move.
     if (player === "X") {
+
         sendState();
+
     }
 
 }
 
 
-// ==========================================
-// CELL CLICK
-// ==========================================
-
-cells.forEach(function(cell) {
-
-    cell.addEventListener("click", function() {
-
-        const index = Number(cell.dataset.index);
-
-        if (!connected || gameOver) return;
-
-        if (player !== turn) return;
-
-        if (board[index] !== "") return;
-
-        if (player === "X") {
-
-            makeMove(index, "X");
-
-        } else {
-
-            // Guest requests a move from host.
-            if (connection && connection.open) {
-
-                connection.send({
-                    type: "move",
-                    index: index
-                });
-
-            }
-
-        }
-
-    });
-
-});
-
-
-// ==========================================
-// WINNER DETECTION
-// ==========================================
+// ============================================
+// CHECK WINNER
+// ============================================
 
 function checkWinner() {
 
@@ -691,7 +703,7 @@ function checkWinner() {
         const [a, b, c] = combination;
 
         if (
-            board[a] &&
+            board[a] !== "" &&
             board[a] === board[b] &&
             board[a] === board[c]
         ) {
@@ -708,9 +720,8 @@ function checkWinner() {
 
     }
 
-
-    // DRAW
-    if (board.every(cell => cell !== "")) {
+    // CHECK DRAW
+    if (board.every(value => value !== "")) {
 
         gameOver = true;
 
@@ -721,61 +732,105 @@ function checkWinner() {
 }
 
 
-// ==========================================
-// HOST SENDS GAME STATE
-// ==========================================
+// ============================================
+// SEND GAME STATE - HOST ONLY
+// ============================================
 
 function sendState() {
 
-    if (!connection || !connection.open) return;
+    if (
+        player !== "X" ||
+        !connection ||
+        !connection.open
+    ) {
 
-    connection.send({
+        console.error("Cannot send game state. Connection unavailable.");
 
-        type: "state",
+        return;
 
-        state: {
+    }
 
-            board: board,
-            turn: turn,
-            gameOver: gameOver,
-            scores: scores,
-            winningLine: winningLine
+    const gameState = {
 
-        }
+        board: [...board],
 
-    });
+        turn: turn,
+
+        gameOver: gameOver,
+
+        scores: {...scores},
+
+        winningLine: [...winningLine]
+
+    };
+
+    try {
+
+        connection.send({
+
+            type: "state",
+
+            state: gameState
+
+        });
+
+        console.log("Game state sent:", gameState);
+
+    } catch (error) {
+
+        console.error("Sending state failed:", error);
+
+    }
 
 }
 
 
-// ==========================================
-// GUEST RECEIVES GAME STATE
-// ==========================================
+// ============================================
+// RECEIVE GAME STATE - GUEST ONLY
+// ============================================
 
 function receiveState(state) {
+
+    if (player !== "O") return;
 
     if (!state || !Array.isArray(state.board)) return;
 
     if (state.board.length !== 9) return;
 
+    if (!state.board.every(
+        value => value === "" || value === "X" || value === "O"
+    )) return;
+
     if (!["X", "O"].includes(state.turn)) return;
 
-    board = state.board;
+    if (!state.scores) return;
+
+    board = [...state.board];
+
     turn = state.turn;
-    gameOver = state.gameOver;
 
-    scores = state.scores;
+    gameOver = !!state.gameOver;
 
-    winningLine = state.winningLine || [];
+    scores = {
+        X: Number(state.scores.X) || 0,
+        O: Number(state.scores.O) || 0,
+        draw: Number(state.scores.draw) || 0
+    };
+
+    winningLine = Array.isArray(state.winningLine)
+        ? state.winningLine
+        : [];
+
+    console.log("Game state received:", state);
 
     updateGame();
 
 }
 
 
-// ==========================================
-// UPDATE INTERFACE
-// ==========================================
+// ============================================
+// UPDATE SCREEN
+// ============================================
 
 function updateGame() {
 
@@ -798,10 +853,10 @@ function updateGame() {
         }
 
         cell.disabled =
-    !connected ||
-    gameOver ||
-    player !== turn ||
-    board[index] !== "";
+            !connected ||
+            gameOver ||
+            player !== turn ||
+            board[index] !== "";
 
     });
 
@@ -867,11 +922,9 @@ function updateGame() {
 
         } else {
 
-            setStatus(
-                "OPPONENT'S TURN (" +
-                (player === "X" ? "O" : "X") + ")",
-                true
-            );
+            const opponent = player === "X" ? "O" : "X";
+
+            setStatus("OPPONENT'S TURN (" + opponent + ")", true);
 
         }
 
@@ -880,11 +933,13 @@ function updateGame() {
 }
 
 
-// ==========================================
+// ============================================
 // RESET GAME
-// ==========================================
+// ============================================
 
 function resetGame() {
+
+    if (player !== "X") return;
 
     board = Array(9).fill("");
 
@@ -896,18 +951,14 @@ function resetGame() {
 
     updateGame();
 
-    if (player === "X") {
-
-        sendState();
-
-    }
+    sendState();
 
 }
 
 
-// ==========================================
+// ============================================
 // PLAY AGAIN
-// ==========================================
+// ============================================
 
 rematchBtn.addEventListener("click", function() {
 
@@ -925,20 +976,20 @@ rematchBtn.addEventListener("click", function() {
                 type: "rematch"
             });
 
+            rematchBtn.disabled = true;
+
+            setStatus("Rematch requested...");
+
         }
-
-        rematchBtn.disabled = true;
-
-        setStatus("Rematch requested...");
 
     }
 
 });
 
 
-// ==========================================
+// ============================================
 // STATUS MESSAGE
-// ==========================================
+// ============================================
 
 function setStatus(message, isConnected) {
 
@@ -951,6 +1002,12 @@ function setStatus(message, isConnected) {
 
 }
 
+
+// ============================================
+// START GAME
+// ============================================
+
+createPeer();
 </script>
 
 </body>
