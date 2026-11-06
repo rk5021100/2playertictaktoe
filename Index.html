@@ -1,0 +1,951 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic Tac Toe | Online Multiplayer</title>
+
+<!-- PeerJS -->
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    min-height: 100vh;
+    background: #101827;
+    color: #ffffff;
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 460px;
+    background: #192538;
+    border: 1px solid #2c3d56;
+    border-radius: 22px;
+    padding: 28px;
+    text-align: center;
+    box-shadow: 0 20px 60px #0005;
+}
+
+h1 {
+    font-size: 30px;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+
+.subtitle {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 22px;
+}
+
+.status {
+    background: #26364c;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 22px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #fbbf24;
+}
+
+.status.connected {
+    color: #4ade80;
+}
+
+.scoreboard {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 25px;
+}
+
+.score {
+    background: #24344b;
+    padding: 13px 5px;
+    border-radius: 12px;
+}
+
+.score h3 {
+    font-size: 13px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+}
+
+.score p {
+    font-size: 27px;
+    font-weight: bold;
+}
+
+.x-score { color: #38bdf8; }
+.o-score { color: #fb7185; }
+.draw-score { color: #fbbf24; }
+
+.players {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    font-size: 13px;
+    color: #cbd5e1;
+}
+
+.player.active {
+    color: #4ade80;
+    font-weight: bold;
+}
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 22px;
+}
+
+.cell {
+    aspect-ratio: 1;
+    background: #26364c;
+    border: 2px solid #344760;
+    border-radius: 14px;
+    color: white;
+    font-size: clamp(45px, 12vw, 65px);
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.cell:hover:not(:disabled) {
+    background: #344b67;
+    transform: scale(1.03);
+}
+
+.cell:disabled {
+    cursor: default;
+}
+
+.cell.x {
+    color: #38bdf8;
+}
+
+.cell.o {
+    color: #fb7185;
+}
+
+.cell.winner {
+    background: #166534;
+    border-color: #4ade80;
+}
+
+button:focus-visible {
+    outline: 3px solid #fbbf24;
+    outline-offset: 3px;
+}
+
+.controls {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+}
+
+.action-btn {
+    width: 100%;
+    border: none;
+    padding: 14px;
+    border-radius: 11px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.invite-btn {
+    background: #2563eb;
+    color: white;
+}
+
+.rematch-btn {
+    background: #16a34a;
+    color: white;
+}
+
+.action-btn:hover {
+    filter: brightness(1.15);
+}
+
+.action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.room-info {
+    margin-top: 20px;
+    color: #94a3b8;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.room-info span {
+    color: #38bdf8;
+}
+
+.footer {
+    color: #64748b;
+    font-size: 11px;
+    margin-top: 22px;
+}
+
+@media(max-width: 400px) {
+    .container {
+        padding: 19px;
+    }
+
+    h1 {
+        font-size: 25px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>⭕ TIC TAC TOE</h1>
+    <p class="subtitle">Online Multiplayer Challenge</p>
+
+    <div class="status" id="status">
+        Connecting...
+    </div>
+
+    <div class="scoreboard">
+
+        <div class="score">
+            <h3>PLAYER X</h3>
+            <p class="x-score" id="scoreX">0</p>
+        </div>
+
+        <div class="score">
+            <h3>DRAWS</h3>
+            <p class="draw-score" id="scoreDraw">0</p>
+        </div>
+
+        <div class="score">
+            <h3>PLAYER O</h3>
+            <p class="o-score" id="scoreO">0</p>
+        </div>
+
+    </div>
+
+    <div class="players">
+        <div id="playerX">You: X</div>
+        <div id="playerO">Opponent: O</div>
+    </div>
+
+    <div class="board" id="board">
+
+        <button class="cell" data-index="0"></button>
+        <button class="cell" data-index="1"></button>
+        <button class="cell" data-index="2"></button>
+
+        <button class="cell" data-index="3"></button>
+        <button class="cell" data-index="4"></button>
+        <button class="cell" data-index="5"></button>
+
+        <button class="cell" data-index="6"></button>
+        <button class="cell" data-index="7"></button>
+        <button class="cell" data-index="8"></button>
+
+    </div>
+
+    <div class="controls">
+
+        <button class="action-btn invite-btn"
+                id="inviteBtn" disabled>
+            COPY INVITE LINK
+        </button>
+
+        <button class="action-btn rematch-btn"
+                id="rematchBtn" disabled>
+            PLAY AGAIN
+        </button>
+
+    </div>
+
+    <div class="room-info">
+        Room ID: <span id="roomID">Generating...</span>
+    </div>
+
+    <div class="footer">
+        TWO PLAYERS · ONE WINNER · UNLIMITED FUN
+    </div>
+
+</div>
+
+
+<script>
+
+// ==========================================
+// GAME VARIABLES
+// ==========================================
+
+let peer;
+let connection = null;
+
+let player = null;
+let roomId = null;
+
+let connected = false;
+let gameOver = false;
+
+let board = Array(9).fill("");
+let turn = "X";
+
+let scores = {
+    X: 0,
+    O: 0,
+    draw: 0
+};
+
+let winningLine = [];
+
+let connectionReady = false;
+let peerReady = false;
+let connecting = false;
+let hostConnection = null;
+
+const cells = document.querySelectorAll(".cell");
+
+const statusBox = document.getElementById("status");
+const inviteBtn = document.getElementById("inviteBtn");
+const rematchBtn = document.getElementById("rematchBtn");
+
+const roomDisplay = document.getElementById("roomID");
+
+const winningCombinations = [
+    [0, 1, 2],
+    [3, 4, 5],
+    [6, 7, 8],
+
+    [0, 3, 6],
+    [1, 4, 7],
+    [2, 5, 8],
+
+    [0, 4, 8],
+    [2, 4, 6]
+];
+
+
+// ==========================================
+// DETERMINE HOST OR GUEST
+// ==========================================
+
+const params = new URLSearchParams(window.location.search);
+const requestedRoom = params.get("room");
+
+if (requestedRoom) {
+
+    // PLAYER 2
+    player = "O";
+    roomId = requestedRoom;
+
+    roomDisplay.textContent = roomId;
+
+    setStatus("Connecting to Player X...");
+
+    createPeer();
+
+} else {
+
+    // PLAYER 1
+    player = "X";
+
+    setStatus("Creating your game room...");
+
+    createPeer();
+
+}
+
+
+// ==========================================
+// PEERJS INITIALIZATION
+// ==========================================
+
+function createPeer() {
+
+    peer = new Peer();
+
+    peer.on("open", function(id) {
+
+        peerReady = true;
+
+        if (player === "X") {
+
+            roomId = id;
+
+            roomDisplay.textContent = roomId;
+
+            inviteBtn.disabled = false;
+
+            setStatus("Waiting for opponent...");
+
+            updateInviteLink();
+
+        } else {
+
+            connectToHost();
+
+        }
+
+    });
+
+
+    // HOST RECEIVES CONNECTION
+    peer.on("connection", function(conn) {
+
+        if (player !== "X") {
+            conn.close();
+            return;
+        }
+
+        if (hostConnection && hostConnection.open) {
+            conn.close();
+            return;
+        }
+
+        hostConnection = conn;
+        connection = conn;
+
+        setupConnection(conn);
+
+    });
+
+
+    peer.on("error", function(err) {
+
+        console.error("PeerJS error:", err);
+
+        if (player === "O" && !connected) {
+            setStatus("Unable to connect. Refresh the invite link.");
+        } else {
+            setStatus("Connection error. Please refresh.");
+        }
+
+    });
+
+    peer.on("disconnected", function() {
+
+        if (connected) {
+            setStatus("Connection lost. Please refresh.");
+        }
+
+    });
+
+}
+
+
+// ==========================================
+// PLAYER 2 CONNECTS TO PLAYER 1
+// ==========================================
+
+function connectToHost() {
+
+    if (connecting || connected || !peerReady) return;
+
+    connecting = true;
+
+    setStatus("Joining the game...");
+
+    const conn = peer.connect(roomId, {
+        reliable: true
+    });
+
+    connection = conn;
+
+    setupConnection(conn);
+
+}
+
+
+// ==========================================
+// CONNECTION EVENTS
+// ==========================================
+
+function setupConnection(conn) {
+
+    conn.on("open", function() {
+
+        connected = true;
+        connectionReady = true;
+
+        setStatus("Opponent connected!", true);
+
+        if (player === "X") {
+
+            sendState();
+
+        }
+
+        updateGame();
+
+    });
+
+
+    conn.on("data", function(data) {
+
+        if (!data || typeof data !== "object") return;
+
+        // Only host controls the actual game state.
+        if (player === "X") {
+
+            if (data.type === "move") {
+
+                if (
+                    data.index >= 0 &&
+                    data.index < 9 &&
+                    Number.isInteger(data.index)
+                ) {
+                    makeMove(data.index, "O");
+                }
+
+            }
+
+            if (data.type === "rematch") {
+
+                if (gameOver) {
+                    resetGame();
+                }
+
+            }
+
+        } else {
+
+            // Guest receives the host's official state.
+            if (data.type === "state") {
+
+                receiveState(data.state);
+
+            }
+
+        }
+
+    });
+
+
+    conn.on("close", function() {
+
+        connected = false;
+        connectionReady = false;
+
+        if (player === "X") {
+            hostConnection = null;
+        }
+
+        setStatus("Opponent disconnected.");
+
+        updateGame();
+
+    });
+
+
+    conn.on("error", function(err) {
+
+        console.error("Connection error:", err);
+
+        setStatus("Connection problem.");
+
+    });
+
+}
+
+
+// ==========================================
+// INVITE LINK
+// ==========================================
+
+function updateInviteLink() {
+
+    const inviteLink =
+        window.location.origin +
+        window.location.pathname +
+        "?room=" +
+        encodeURIComponent(roomId);
+
+    inviteBtn.onclick = async function() {
+
+        try {
+
+            await navigator.clipboard.writeText(inviteLink);
+
+            inviteBtn.textContent = "LINK COPIED!";
+
+        } catch (error) {
+
+            window.prompt("Copy this invite link:", inviteLink);
+
+        }
+
+        setTimeout(function() {
+
+            inviteBtn.textContent = "COPY INVITE LINK";
+
+        }, 2000);
+
+    };
+
+}
+
+
+// ==========================================
+// GAME MOVE
+// ==========================================
+
+function makeMove(index, symbol) {
+
+    if (!connected || gameOver) return;
+
+    if (turn !== symbol) return;
+
+    if (board[index] !== "") return;
+
+    board[index] = symbol;
+
+    turn = symbol === "X" ? "O" : "X";
+
+    checkWinner();
+
+    updateGame();
+
+    // Host broadcasts official game state.
+    if (player === "X") {
+        sendState();
+    }
+
+}
+
+
+// ==========================================
+// CELL CLICK
+// ==========================================
+
+cells.forEach(function(cell) {
+
+    cell.addEventListener("click", function() {
+
+        const index = Number(cell.dataset.index);
+
+        if (!connected || gameOver) return;
+
+        if (player !== turn) return;
+
+        if (board[index] !== "") return;
+
+        if (player === "X") {
+
+            makeMove(index, "X");
+
+        } else {
+
+            // Guest requests a move from host.
+            if (connection && connection.open) {
+
+                connection.send({
+                    type: "move",
+                    index: index
+                });
+
+            }
+
+        }
+
+    });
+
+});
+
+
+// ==========================================
+// WINNER DETECTION
+// ==========================================
+
+function checkWinner() {
+
+    winningLine = [];
+
+    for (const combination of winningCombinations) {
+
+        const [a, b, c] = combination;
+
+        if (
+            board[a] &&
+            board[a] === board[b] &&
+            board[a] === board[c]
+        ) {
+
+            gameOver = true;
+
+            winningLine = combination;
+
+            scores[board[a]]++;
+
+            return;
+
+        }
+
+    }
+
+
+    // DRAW
+    if (board.every(cell => cell !== "")) {
+
+        gameOver = true;
+
+        scores.draw++;
+
+    }
+
+}
+
+
+// ==========================================
+// HOST SENDS GAME STATE
+// ==========================================
+
+function sendState() {
+
+    if (!connection || !connection.open) return;
+
+    connection.send({
+
+        type: "state",
+
+        state: {
+
+            board: board,
+            turn: turn,
+            gameOver: gameOver,
+            scores: scores,
+            winningLine: winningLine
+
+        }
+
+    });
+
+}
+
+
+// ==========================================
+// GUEST RECEIVES GAME STATE
+// ==========================================
+
+function receiveState(state) {
+
+    if (!state || !Array.isArray(state.board)) return;
+
+    if (state.board.length !== 9) return;
+
+    if (!["X", "O"].includes(state.turn)) return;
+
+    board = state.board;
+    turn = state.turn;
+    gameOver = state.gameOver;
+
+    scores = state.scores;
+
+    winningLine = state.winningLine || [];
+
+    updateGame();
+
+}
+
+
+// ==========================================
+// UPDATE INTERFACE
+// ==========================================
+
+function updateGame() {
+
+    cells.forEach(function(cell, index) {
+
+        cell.textContent = board[index];
+
+        cell.classList.remove("x", "o", "winner");
+
+        if (board[index] === "X") {
+            cell.classList.add("x");
+        }
+
+        if (board[index] === "O") {
+            cell.classList.add("o");
+        }
+
+        if (winningLine.includes(index)) {
+            cell.classList.add("winner");
+        }
+
+        cell.disabled =
+    !connected ||s
+    gameOver ||
+    player !== turn ||
+    board[index] !== "";
+
+    });
+
+
+    // SCOREBOARD
+    document.getElementById("scoreX").textContent = scores.X;
+
+    document.getElementById("scoreO").textContent = scores.O;
+
+    document.getElementById("scoreDraw").textContent = scores.draw;
+
+
+    // PLAYER LABELS
+    document.getElementById("playerX").textContent =
+        player === "X" ? "You: X" : "Opponent: X";
+
+    document.getElementById("playerO").textContent =
+        player === "O" ? "You: O" : "Opponent: O";
+
+
+    document.getElementById("playerX").classList.toggle(
+        "active",
+        connected && !gameOver && turn === "X"
+    );
+
+    document.getElementById("playerO").classList.toggle(
+        "active",
+        connected && !gameOver && turn === "O"
+    );
+
+
+    // STATUS
+    if (!connected) {
+
+        rematchBtn.disabled = true;
+
+    } else if (gameOver) {
+
+        rematchBtn.disabled = false;
+
+        if (winningLine.length > 0) {
+
+            const winner = board[winningLine[0]];
+
+            setStatus(
+                winner === player ? "YOU WON! 🎉" : "YOU LOST!",
+                true
+            );
+
+        } else {
+
+            setStatus("IT'S A DRAW!", true);
+
+        }
+
+    } else {
+
+        rematchBtn.disabled = true;
+
+        if (turn === player) {
+
+            setStatus("YOUR TURN (" + player + ")", true);
+
+        } else {
+
+            setStatus(
+                "OPPONENT'S TURN (" +
+                (player === "X" ? "O" : "X") + ")",
+                true
+            );
+
+        }
+
+    }
+
+}
+
+
+// ==========================================
+// RESET GAME
+// ==========================================
+
+function resetGame() {
+
+    board = Array(9).fill("");
+
+    turn = "X";
+
+    gameOver = false;
+
+    winningLine = [];
+
+    updateGame();
+
+    if (player === "X") {
+
+        sendState();
+
+    }
+
+}
+
+
+// ==========================================
+// PLAY AGAIN
+// ==========================================
+
+rematchBtn.addEventListener("click", function() {
+
+    if (!connected || !gameOver) return;
+
+    if (player === "X") {
+
+        resetGame();
+
+    } else {
+
+        if (connection && connection.open) {
+
+            connection.send({
+                type: "rematch"
+            });
+
+        }
+
+        rematchBtn.disabled = true;
+
+        setStatus("Rematch requested...");
+
+    }
+
+});
+
+
+// ==========================================
+// STATUS MESSAGE
+// ==========================================
+
+function setStatus(message, isConnected) {
+
+    statusBox.textContent = message;
+
+    statusBox.classList.toggle(
+        "connected",
+        !!isConnected
+    );
+
+}
+
+</script>
+
+</body>
+</html>
