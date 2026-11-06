@@ -484,21 +484,24 @@ function setupConnection(conn) {
 
     conn.on("open", function() {
 
-        connected = true;
-        connectionReady = true;
+    connected = true;
+    connectionReady = true;
 
-        setStatus("Opponent connected!", true);
+    connection = conn;
 
-        if (player === "X") {
+    if (player === "X") {
+        hostConnection = conn;
+    }
 
-            sendState();
+    setStatus("Opponent connected!", true);
 
-        }
+    updateGame();
 
-        updateGame();
+    if (player === "X") {
+        sendState();
+    }
 
-    });
-
+});
 
     conn.on("data", function(data) {
 
